@@ -1,0 +1,1377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Training">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#f59e0b">
+<title>Training Tracker</title>
+<script>
+// PWA: generate icon + manifest + service worker so browser offers "Add to Home Screen"
+window.addEventListener('DOMContentLoaded', async function() {
+  // --- Generate app icon via canvas ---
+  function makeIcon(size) {
+    try {
+      var c = document.createElement('canvas');
+      c.width = size; c.height = size;
+      var ctx = c.getContext('2d');
+      var r = size * 0.18;
+      // Dark background with rounded corners
+      ctx.fillStyle = '#020617';
+      ctx.beginPath();
+      ctx.moveTo(r,0); ctx.lineTo(size-r,0);
+      ctx.arc(size-r,r,r,-Math.PI/2,0);
+      ctx.lineTo(size,size-r);
+      ctx.arc(size-r,size-r,r,0,Math.PI/2);
+      ctx.lineTo(r,size);
+      ctx.arc(r,size-r,r,Math.PI/2,Math.PI);
+      ctx.lineTo(0,r);
+      ctx.arc(r,r,r,Math.PI,Math.PI*3/2);
+      ctx.closePath();
+      ctx.fill();
+      // Amber dumbbell
+      var s = size * 0.12;
+      ctx.fillStyle = '#f59e0b';
+      // Left plate
+      ctx.fillRect(size*0.08, size*0.32, s, size*0.36);
+      // Bar
+      ctx.fillRect(size*0.08+s, size*0.44, size*0.68-s*2, size*0.12);
+      // Right plate
+      ctx.fillRect(size*0.08+size*0.68-s, size*0.32, s, size*0.36);
+      return c.toDataURL('image/png');
+    } catch(e) { return ''; }
+  }
+
+  var icon192 = makeIcon(192);
+  var icon512 = makeIcon(512);
+
+  // --- Inject manifest ---
+  try {
+    var manifest = {
+      name: '12 Week Training Tracker',
+      short_name: 'Training',
+      description: 'Daily workout tracker for your 12-week plan',
+      start_url: './',
+      scope: './',
+      display: 'standalone',
+      background_color: '#020617',
+      theme_color: '#f59e0b',
+      orientation: 'portrait-primary',
+      icons: [
+        { src: icon192, sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+        { src: icon512, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
+      ]
+    };
+    var mBlob = new Blob([JSON.stringify(manifest)], {type:'application/manifest+json'});
+    var mUrl = URL.createObjectURL(mBlob);
+    var link = document.createElement('link');
+    link.rel = 'manifest'; link.href = mUrl;
+    document.head.appendChild(link);
+  } catch(e) {}
+
+  // --- Register service worker (enables install prompt on Android) ---
+  if ('serviceWorker' in navigator) {
+    var swCode = [
+      "self.addEventListener('install', function(e){ self.skipWaiting(); });",
+      "self.addEventListener('activate', function(e){ e.waitUntil(clients.claim()); });",
+      "self.addEventListener('fetch', function(e){",
+      "  e.respondWith(fetch(e.request).catch(function(){",
+      "    return caches.match(e.request).then(function(r){ return r || new Response(''); });",
+      "  }));",
+      "});"
+    ].join('\n');
+    try {
+      var swBlob = new Blob([swCode], {type:'text/javascript'});
+      var swUrl = URL.createObjectURL(swBlob);
+      await navigator.serviceWorker.register(swUrl, {scope: './'});
+    } catch(e) {}
+  }
+
+  // --- Show custom install banner if browser supports it ---
+  var installPrompt = null;
+  window.addEventListener('beforeinstallprompt', function(e) {
+    e.preventDefault();
+    installPrompt = e;
+    // Show a small install nudge
+    var banner = document.createElement('div');
+    banner.id = 'install-banner';
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999;background:#f59e0b;color:#020617;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;font-family:system-ui,sans-serif;font-size:14px;font-weight:700;max-width:480px;margin:0 auto;';
+    banner.innerHTML = '<span>📲 Add Training Tracker to your home screen</span><button id="install-btn" style="background:#020617;color:#f59e0b;border:none;padding:6px 14px;border-radius:8px;font-weight:800;font-size:13px;cursor:pointer;">Install</button>';
+    document.body.prepend(banner);
+    document.getElementById('install-btn').addEventListener('click', async function() {
+      if (installPrompt) {
+        await installPrompt.prompt();
+        installPrompt = null;
+        banner.remove();
+      }
+    });
+  });
+  window.addEventListener('appinstalled', function() {
+    var b = document.getElementById('install-banner');
+    if (b) b.remove();
+  });
+});
+</script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    background: #020617;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif;
+    font-size: 15px;
+    line-height: 1.45;
+    overscroll-behavior-y: none;
+    min-height: 100vh;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  #app { max-width: 480px; margin: 0 auto; padding-bottom: 80px; }
+  button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+  input, textarea, select { font-family: inherit; font-size: 16px; }
+
+  /* Typography */
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .h1   { font-size: 24px; font-weight: 800; color: #fff; line-height: 1.15; }
+  .h2   { font-size: 18px; font-weight: 700; color: #fff; }
+  .label{ font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; color: #cbd5e1; }
+  .meta { font-size: 12px; color: #94a3b8; }
+  .secondary { color: #e2e8f0; }
+
+  /* Layout helpers */
+  .row  { display: flex; align-items: center; gap: 8px; }
+  .col  { display: flex; flex-direction: column; }
+  .grow { flex: 1; min-width: 0; }
+  .gap-2 { gap: 8px; } .gap-3 { gap: 12px; } .gap-4 { gap: 16px; }
+  .mt-1{margin-top:4px} .mt-2{margin-top:8px} .mt-3{margin-top:12px} .mt-4{margin-top:16px} .mt-5{margin-top:20px}
+  .mb-1{margin-bottom:4px} .mb-2{margin-bottom:8px} .mb-3{margin-bottom:12px} .mb-4{margin-bottom:16px}
+  .px-4 { padding-left: 16px; padding-right: 16px; }
+  .pt-5 { padding-top: 20px; } .pb-2 { padding-bottom: 8px; }
+  .space-y-3 > * + * { margin-top: 12px; }
+  .space-y-4 > * + * { margin-top: 16px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .text-center{text-align:center}
+  .truncate{ overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+
+  /* Cards */
+  .card {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 16px;
+  }
+  .card-pad { padding: 16px; }
+  .input {
+    width: 100%;
+    background: #1e293b;
+    border: 1px solid #475569;
+    color: #fff;
+    padding: 10px 12px;
+    border-radius: 12px;
+    font-size: 15px;
+    outline: none;
+  }
+  .input:focus { border-color: #fbbf24; }
+  .input::placeholder { color: #64748b; }
+  .input-mono { font-family: ui-monospace, "SF Mono", monospace; }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 10px 14px; border-radius: 12px;
+    font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+    transition: transform 0.1s, opacity 0.2s;
+  }
+  .btn:active { transform: scale(0.96); }
+  .btn-amber { background: #f59e0b; color: #0f172a; }
+  .btn-slate { background: #334155; color: #fff; }
+  .btn-rose  { background: #e11d48; color: #fff; }
+  .btn-emerald { background: #10b981; color: #fff; }
+  .btn-ghost { background: rgba(255,255,255,0.05); color: #cbd5e1; }
+
+  /* Done states */
+  .done-mark { background: #334155; color: #e2e8f0; }
+  .done-yes  { background: #10b981; color: #fff; box-shadow: 0 0 0 2px rgba(16,185,129,0.4); }
+  .done-mod  { background: #f59e0b; color: #0f172a; box-shadow: 0 0 0 2px rgba(245,158,11,0.4); }
+  .done-no   { background: #e11d48; color: #fff; box-shadow: 0 0 0 2px rgba(225,29,72,0.4); }
+
+  /* Bottom nav */
+  .nav {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: rgba(2,6,23,0.97);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid #334155;
+    z-index: 50;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .nav-inner { max-width: 480px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); padding: 4px 8px; }
+  .nav-btn { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 4px; border-radius: 10px; color: #94a3b8; }
+  .nav-btn.active { color: #fbbf24; }
+  .nav-btn-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; }
+
+  /* Save indicator */
+  .save-pill {
+    position: fixed; top: 12px; right: 12px; z-index: 60;
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 999px;
+    font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em;
+    backdrop-filter: blur(8px);
+  }
+  .save-saving { background: #334155; color: #e2e8f0; }
+  .save-saved { background: #10b981; color: #fff; }
+  .spinner { width: 12px; height: 12px; border: 2px solid #cbd5e1; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Section card */
+  .sec-card { border-width: 2px; border-style: solid; border-radius: 16px; overflow: hidden; }
+  .sec-header { width: 100%; padding: 14px 16px; display: flex; align-items: center; gap: 12px; text-align: left; }
+  .sec-header:active { background: rgba(0,0,0,0.2); }
+  .sec-bar { width: 4px; height: 32px; border-radius: 4px; flex-shrink: 0; }
+  .sec-title { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; }
+  .sec-meta { font-size: 12px; font-weight: 600; color: #cbd5e1; margin-top: 2px; }
+  .sec-body { border-top: 1px solid rgba(255,255,255,0.08); }
+
+  /* Exercise row */
+  .ex-row { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+  .ex-row:last-child { border-bottom: none; }
+  .ex-row.done { opacity: 0.6; }
+  .ex-name { font-size: 15px; font-weight: 600; color: #fff; line-height: 1.3; }
+  .ex-name.done { text-decoration: line-through; color: #94a3b8; }
+  .ex-meta { font-size: 12px; color: #94a3b8; margin-top: 2px; font-family: ui-monospace, monospace; }
+  .edit-btn { padding: 6px; border-radius: 8px; color: #94a3b8; }
+  .edit-btn:active { background: rgba(255,255,255,0.08); }
+
+  /* Number pad */
+  .numpad { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .num-btn {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: #1e293b; color: #e2e8f0;
+    font-family: ui-monospace, monospace; font-size: 14px; font-weight: 700;
+    transition: transform 0.1s;
+  }
+  .num-btn:active { background: #334155; }
+  .num-btn.selected { transform: scale(1.1); color: #fff; }
+
+  /* Progress ring */
+  .ring-wrap { position: relative; width: 64px; height: 64px; flex-shrink: 0; }
+  .ring-wrap svg { width: 64px; height: 64px; transform: rotate(-90deg); }
+  .ring-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: ui-monospace, monospace; font-weight: 800; color: #fbbf24; font-size: 14px; }
+
+  /* Misc */
+  .chev { transition: transform 0.2s; }
+  .chev.open { transform: rotate(180deg); }
+  .pulse { animation: pulse 0.6s ease-out; }
+  @keyframes pulse { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+  .celebrate {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 100; pointer-events: none;
+  }
+  .celebrate-card {
+    background: #fbbf24; color: #0f172a;
+    padding: 20px 32px; border-radius: 20px;
+    font-weight: 800; font-size: 18px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    display: flex; align-items: center; gap: 12px;
+  }
+
+  /* Status pill */
+  .pill { font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .pill-new { background: #334155; color: #e2e8f0; }
+  .pill-done { background: #10b981; color: #fff; }
+  .pill-mod  { background: #f59e0b; color: #0f172a; }
+  .pill-skip { background: #e11d48; color: #fff; }
+
+  /* Stat bars */
+  .bar { height: 8px; background: #334155; border-radius: 999px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 999px; transition: width 0.4s ease; }
+
+  /* Special focus */
+  .focus-card {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    border: 1px solid #475569;
+    border-radius: 16px; padding: 16px;
+    display: flex; align-items: center; gap: 16px;
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useMemo, useRef } = React;
+
+// ─────────────────────────────────────────────────────
+//  SCHEDULE
+// ─────────────────────────────────────────────────────
+const SCHEDULE = {
+  Monday: { focus: "Lower Body Strength + Yoga", sections: [
+    { name: "Warm-Up", exercises: [
+      { ex: "Bike easy", sets: 1, reps: "3 min" },
+      { ex: "Leg swings (front/back & side)", sets: 2, reps: "10 each direction" },
+      { ex: "Glute bridges", sets: 2, reps: "10" },
+      { ex: "Monster walks (band)", sets: 2, reps: "10 m" },
+      { ex: "Single-leg balance", sets: 1, reps: "30s / side" },
+      { ex: "Bodyweight squats", sets: 2, reps: "10" },
+    ]},
+    { name: "Strength", exercises: [
+      { ex: "Step-Ups", sets: 4, reps: "8-10" },
+      { ex: "Bulgarian Split Squats", sets: 4, reps: "8" },
+      { ex: "Hamstring Curl", sets: 4, reps: "10-12" },
+      { ex: "Seated Calf Raise", sets: 4, reps: "15" },
+      { ex: "Hip Abductor Machine", sets: 4, reps: "15" },
+      { ex: "Dead Bugs", sets: 3, reps: "12" },
+      { ex: "Plank", sets: 1, reps: "60 sec" },
+    ]},
+    { name: "Cardio", exercises: [
+      { ex: "Easy cycle or walk (optional)", sets: 1, reps: "20-30 min" },
+    ]},
+    { name: "Yoga/Mobility", exercises: [
+      { ex: "Child pose", sets: 1, reps: "60 sec" },
+      { ex: "Cat cow", sets: 1, reps: "10 reps" },
+      { ex: "Downward dog", sets: 1, reps: "30 sec" },
+      { ex: "Low lunge", sets: 1, reps: "45s / side" },
+      { ex: "Pigeon", sets: 1, reps: "60s / side" },
+      { ex: "Seated forward fold", sets: 1, reps: "60 sec" },
+      { ex: "Supine twist (gentle)", sets: 1, reps: "45s / side" },
+      { ex: "Box breathing", sets: 1, reps: "2 min" },
+    ]},
+    { name: "Cool Down", exercises: [
+      { ex: "Easy walk", sets: 1, reps: "2 min" },
+      { ex: "Hip flexor stretch", sets: 1, reps: "30s / side" },
+      { ex: "Hamstring stretch", sets: 1, reps: "30s / side" },
+      { ex: "Figure-4 stretch", sets: 1, reps: "30s / side" },
+      { ex: "Calf stretch", sets: 1, reps: "30s / side" },
+      { ex: "Deep breathing", sets: 1, reps: "60 sec" },
+    ]},
+  ]},
+  Tuesday: { focus: "Push + Run #1", sections: [
+    { name: "Warm-Up", exercises: [
+      { ex: "Bike easy", sets: 1, reps: "3 min" },
+      { ex: "Band external rotations", sets: 2, reps: "15" },
+      { ex: "Band pull-aparts", sets: 2, reps: "15" },
+      { ex: "Wall slides", sets: 2, reps: "10" },
+      { ex: "Scapular push-ups", sets: 2, reps: "10" },
+      { ex: "Bench warm-up: empty bar", sets: 1, reps: "15" },
+      { ex: "Bench warm-up: light set", sets: 1, reps: "10" },
+    ]},
+    { name: "Strength", exercises: [
+      { ex: "Bench Press", sets: 4, reps: "6-8" },
+      { ex: "Incline DB Press", sets: 4, reps: "8-10" },
+      { ex: "Machine Chest Press", sets: 4, reps: "10" },
+      { ex: "Rope Tricep Pushdown", sets: 4, reps: "12" },
+      { ex: "Face Pulls", sets: 3, reps: "15" },
+    ]},
+    { name: "Cardio", exercises: [
+      { ex: "Return-to-running session #1", sets: 1, reps: "Per plan" },
+    ]},
+    { name: "Cool Down", exercises: [
+      { ex: "Easy walk", sets: 1, reps: "2 min" },
+      { ex: "Doorway chest stretch", sets: 1, reps: "30s / side" },
+      { ex: "Cross-body shoulder stretch", sets: 1, reps: "30s / side" },
+      { ex: "Upper trap stretch", sets: 1, reps: "30s / side" },
+      { ex: "Child pose", sets: 1, reps: "60 sec" },
+      { ex: "Deep breathing", sets: 1, reps: "60 sec" },
+    ]},
+  ]},
+  Wednesday: { focus: "Recovery + Yoga", sections: [
+    { name: "Warm-Up", exercises: [
+      { ex: "Easy walk or cycle", sets: 1, reps: "5 min" },
+      { ex: "Nasal breathing reset", sets: 1, reps: "2 min" },
+    ]},
+    { name: "Cardio", exercises: [
+      { ex: "Easy walk or easy cycle", sets: 1, reps: "20-30 min" },
+    ]},
+    { name: "Yoga/Mobility", exercises: [
+      { ex: "Child pose", sets: 1, reps: "60 sec" },
+      { ex: "Cat cow", sets: 1, reps: "10 reps" },
+      { ex: "Bird dog", sets: 1, reps: "10 / side" },
+      { ex: "Thread the needle", sets: 1, reps: "45s / side" },
+      { ex: "90/90 hip flow", sets: 1, reps: "8 / side" },
+      { ex: "World's greatest stretch", sets: 1, reps: "5 / side" },
+      { ex: "Low lunge", sets: 1, reps: "45s / side" },
+      { ex: "Pigeon", sets: 1, reps: "60s / side" },
+      { ex: "Hamstring stretch", sets: 1, reps: "45s / side" },
+      { ex: "Legs up wall", sets: 1, reps: "2 min" },
+      { ex: "Breathing", sets: 1, reps: "2 min" },
+    ]},
+    { name: "Cool Down", exercises: [
+      { ex: "Legs up wall", sets: 1, reps: "2 min" },
+      { ex: "Slow breathing", sets: 1, reps: "3 min" },
+      { ex: "Neck/shoulder release", sets: 1, reps: "60 sec" },
+    ]},
+  ]},
+  Thursday: { focus: "Pull + Football", sections: [
+    { name: "Warm-Up", exercises: [
+      { ex: "Bike easy", sets: 1, reps: "3 min" },
+      { ex: "Cat cow", sets: 1, reps: "10 reps" },
+      { ex: "Bird dogs", sets: 1, reps: "10 / side" },
+      { ex: "Band pull-aparts", sets: 2, reps: "15" },
+      { ex: "Scapular retractions", sets: 2, reps: "15" },
+      { ex: "Light lat pulldown warm-up", sets: 2, reps: "10" },
+    ]},
+    { name: "Strength", exercises: [
+      { ex: "Neutral Grip Lat Pulldown", sets: 4, reps: "8-10" },
+      { ex: "Chest Supported Row", sets: 4, reps: "10" },
+      { ex: "Seated Cable Row", sets: 4, reps: "10" },
+      { ex: "Hammer Curl", sets: 4, reps: "12" },
+      { ex: "Cable Hip Internal Rotation", sets: 3, reps: "12 / side" },
+      { ex: "Cable Hip External Rotation", sets: 3, reps: "12 / side" },
+      { ex: "Hanging Knee Raises", sets: 3, reps: "10" },
+      { ex: "Plank", sets: 1, reps: "60 sec" },
+    ]},
+    { name: "Cardio", exercises: [
+      { ex: "Football warm-up: easy jog", sets: 1, reps: "2 min" },
+      { ex: "Football warm-up: leg swings", sets: 1, reps: "10 / side" },
+      { ex: "Football warm-up: walking lunges", sets: 1, reps: "10 / leg" },
+      { ex: "Football warm-up: high knees", sets: 1, reps: "20 m" },
+      { ex: "Football warm-up: butt kicks", sets: 1, reps: "20 m" },
+      { ex: "Football warm-up: side shuffle", sets: 1, reps: "20 m / side" },
+      { ex: "Progressive runs (50/70/90%)", sets: 3, reps: "30 m" },
+      { ex: "Football match", sets: 1, reps: "Per game" },
+    ]},
+    { name: "Cool Down", exercises: [
+      { ex: "After gym: easy walk", sets: 1, reps: "2 min" },
+      { ex: "Lat stretch", sets: 1, reps: "30s / side" },
+      { ex: "Figure-4 stretch", sets: 1, reps: "30s / side" },
+      { ex: "Child pose", sets: 1, reps: "60 sec" },
+      { ex: "After football: easy walk", sets: 1, reps: "5 min" },
+      { ex: "Calf stretch", sets: 1, reps: "30s / side" },
+      { ex: "Hip flexor stretch", sets: 1, reps: "30s / side" },
+    ]},
+  ]},
+  Friday: { focus: "VO2 Max + Yoga", sections: [
+    { name: "Warm-Up", exercises: [
+      { ex: "Easy bike", sets: 1, reps: "5 min" },
+      { ex: "Leg swings", sets: 1, reps: "10 each way" },
+      { ex: "Hip circles", sets: 1, reps: "10 each way" },
+      { ex: "Single-leg balance", sets: 1, reps: "30s / side" },
+      { ex: "Progressive bike efforts", sets: 2, reps: "30 sec" },
+    ]},
+    { name: "Cardio", exercises: [
+      { ex: "Bike warm-up", sets: 1, reps: "10 min easy" },
+      { ex: "Norwegian 4x4: hard #1", sets: 1, reps: "4 min hard" },
+      { ex: "Norwegian 4x4: easy #1", sets: 1, reps: "3 min easy" },
+      { ex: "Norwegian 4x4: hard #2", sets: 1, reps: "4 min hard" },
+      { ex: "Norwegian 4x4: easy #2", sets: 1, reps: "3 min easy" },
+      { ex: "Norwegian 4x4: hard #3", sets: 1, reps: "4 min hard" },
+      { ex: "Norwegian 4x4: easy #3", sets: 1, reps: "3 min easy" },
+      { ex: "Norwegian 4x4: hard #4", sets: 1, reps: "4 min hard" },
+      { ex: "Bike cool-down spin", sets: 1, reps: "5 min" },
+    ]},
+    { name: "Yoga/Mobility", exercises: [
+      { ex: "Child pose", sets: 1, reps: "60 sec" },
+      { ex: "Cat cow", sets: 1, reps: "10 reps" },
+      { ex: "Gentle cobra", sets: 1, reps: "30 sec" },
+      { ex: "Low lunge", sets: 1, reps: "45s / side" },
+      { ex: "Pigeon / Figure-4", sets: 1, reps: "60s / side" },
+      { ex: "Hamstring stretch", sets: 1, reps: "45s / side" },
+      { ex: "Legs up wall", sets: 1, reps: "2 min" },
+      { ex: "Breathing", sets: 1, reps: "2 min" },
+    ]},
+    { name: "Cool Down", exercises: [
+      { ex: "Easy bike", sets: 1, reps: "3 min" },
+      { ex: "Hip flexor stretch", sets: 1, reps: "30s / side" },
+      { ex: "Calf stretch", sets: 1, reps: "30s / side" },
+      { ex: "Hamstring stretch", sets: 1, reps: "30s / side" },
+      { ex: "Deep breathing", sets: 1, reps: "60 sec" },
+    ]},
+  ]},
+  Saturday: { focus: "Upper Body + Run #2", sections: [
+    { name: "Warm-Up", exercises: [
+      { ex: "Bike easy", sets: 1, reps: "3 min" },
+      { ex: "Band external rotations", sets: 2, reps: "15" },
+      { ex: "Band pull-aparts", sets: 2, reps: "15" },
+      { ex: "Wall slides", sets: 2, reps: "10" },
+      { ex: "Light press warm-up", sets: 1, reps: "10" },
+      { ex: "Light row warm-up", sets: 1, reps: "10" },
+    ]},
+    { name: "Strength", exercises: [
+      { ex: "Neutral Grip DB Bench", sets: 4, reps: "10" },
+      { ex: "Incline DB Press", sets: 4, reps: "10" },
+      { ex: "Lat Pulldown", sets: 4, reps: "10" },
+      { ex: "Chest Supported Row", sets: 4, reps: "10" },
+      { ex: "Face Pulls", sets: 4, reps: "15" },
+      { ex: "Hammer Curl", sets: 4, reps: "12" },
+      { ex: "Tricep Pushdown", sets: 4, reps: "12" },
+    ]},
+    { name: "Cardio", exercises: [
+      { ex: "Return-to-running session #2", sets: 1, reps: "Per plan" },
+    ]},
+    { name: "Cool Down", exercises: [
+      { ex: "Easy walk", sets: 1, reps: "2 min" },
+      { ex: "Chest stretch", sets: 1, reps: "30s / side" },
+      { ex: "Shoulder stretch", sets: 1, reps: "30s / side" },
+      { ex: "Child pose", sets: 1, reps: "60 sec" },
+      { ex: "Deep breathing", sets: 1, reps: "60 sec" },
+    ]},
+  ]},
+  Sunday: { focus: "Long Easy Run + Recovery", sections: [
+    { name: "Warm-Up", exercises: [
+      { ex: "Leg swings", sets: 1, reps: "10 each direction" },
+      { ex: "Walking lunges", sets: 1, reps: "10 / leg" },
+      { ex: "Calf raises", sets: 1, reps: "15" },
+      { ex: "High knees", sets: 1, reps: "20 m" },
+      { ex: "Easy start to run", sets: 1, reps: "First 5 min" },
+    ]},
+    { name: "Cardio", exercises: [
+      { ex: "Long easy run / RTR session #3", sets: 1, reps: "Per plan" },
+    ]},
+    { name: "Yoga/Mobility", exercises: [
+      { ex: "Hip flexor stretch", sets: 1, reps: "45s / side" },
+      { ex: "Hamstring stretch", sets: 1, reps: "45s / side" },
+      { ex: "Calf stretch", sets: 1, reps: "45s / side" },
+      { ex: "Figure-4", sets: 1, reps: "60s / side" },
+      { ex: "90/90 hips", sets: 1, reps: "8 / side" },
+    ]},
+    { name: "Cool Down", exercises: [
+      { ex: "Easy walk", sets: 1, reps: "5 min" },
+      { ex: "Hip flexor stretch", sets: 1, reps: "30s / side" },
+      { ex: "Hamstring stretch", sets: 1, reps: "30s / side" },
+      { ex: "Calf stretch", sets: 1, reps: "30s / side" },
+      { ex: "Figure-4 stretch", sets: 1, reps: "30s / side" },
+      { ex: "90/90 hips", sets: 1, reps: "10 / side" },
+      { ex: "Deep breathing", sets: 1, reps: "60 sec" },
+    ]},
+  ]},
+};
+
+const SEC_COLOR = {
+  "Warm-Up":       "#f59e0b",
+  "Strength":      "#3b82f6",
+  "Cardio":        "#ec4899",
+  "Yoga/Mobility": "#10b981",
+  "Cool Down":     "#8b5cf6",
+};
+
+const DAYS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+// ─────────────────────────────────────────────────────
+//  HELPERS
+// ─────────────────────────────────────────────────────
+const pad2 = n => String(n).padStart(2, '0');
+const ymd = d => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+const parseYMD = s => { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); };
+const addDays = (d, n) => { const c = new Date(d); c.setDate(c.getDate()+n); return c; };
+const dayName = d => DAYS[d.getDay()];
+const sameDay = (a, b) => ymd(a) === ymd(b);
+const fmtNice = d => `${DAYS[d.getDay()].slice(0,3)}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
+const weekNum = (date, startStr) => Math.floor((date - parseYMD(startStr)) / 86400000 / 7) + 1;
+const uid = () => 'x' + Date.now() + Math.floor(Math.random()*9999);
+
+const buildLog = date => {
+  const sched = SCHEDULE[dayName(date)];
+  const sections = {};
+  sched.sections.forEach(sec => {
+    sections[sec.name] = {
+      done: '',
+      exercises: sec.exercises.map((e, i) => ({
+        id: 's' + i, ex: e.ex, sets: e.sets, reps: e.reps,
+        done: '', weight: '',
+      })),
+    };
+  });
+  return { status: 'Not Started', energy: null, painS: null, painB: null, painK: null, notes: '', sections };
+};
+
+const normalizeLog = (date, stored) => {
+  if (!stored) return buildLog(date);
+  const sched = SCHEDULE[dayName(date)];
+  const fresh = buildLog(date);
+  const log = Object.assign({}, fresh, stored);
+  if (!log.sections || typeof log.sections !== 'object') return fresh;
+  sched.sections.forEach(sec => {
+    const stSec = log.sections[sec.name];
+    if (!stSec || !Array.isArray(stSec.exercises) || stSec.exercises.length === 0
+        || typeof stSec.exercises[0] !== 'object' || !stSec.exercises[0].ex) {
+      const oldEx = (stSec && stSec.exercises) || {};
+      log.sections[sec.name] = {
+        done: (stSec && stSec.done) || '',
+        exercises: sec.exercises.map((e, i) => ({
+          id: 's' + i, ex: e.ex, sets: e.sets, reps: e.reps,
+          done: (oldEx[i] && oldEx[i].done) || '',
+          weight: (oldEx[i] && oldEx[i].weight) || '',
+        })),
+      };
+    }
+  });
+  return log;
+};
+
+// ─────────────────────────────────────────────────────
+//  STORAGE WRAPPER
+//  Uses window.storage if available, falls back to localStorage
+// ─────────────────────────────────────────────────────
+const useStorage = (typeof window.storage !== 'undefined' && window.storage);
+const storage = {
+  async get(key) {
+    if (useStorage) {
+      try { const r = await window.storage.get(key); return r && r.value ? r.value : null; } catch { return null; }
+    } else {
+      try { return localStorage.getItem(key); } catch { return null; }
+    }
+  },
+  async set(key, value) {
+    if (useStorage) {
+      try { await window.storage.set(key, value); return true; } catch { return false; }
+    } else {
+      try { localStorage.setItem(key, value); return true; } catch { return false; }
+    }
+  },
+  async delete(key) {
+    if (useStorage) {
+      try { await window.storage.delete(key); return true; } catch { return false; }
+    } else {
+      try { localStorage.removeItem(key); return true; } catch { return false; }
+    }
+  },
+  async list(prefix) {
+    if (useStorage) {
+      try { const r = await window.storage.list(prefix); return (r && r.keys) || []; } catch { return []; }
+    } else {
+      const keys = [];
+      try { for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(prefix)) keys.push(k);
+      } } catch {}
+      return keys;
+    }
+  },
+};
+
+const logKey = d => 'log:' + ymd(d);
+const loadLog = async d => {
+  const v = await storage.get(logKey(d));
+  if (!v) return null;
+  try { return JSON.parse(v); } catch { return null; }
+};
+const saveLog = async (d, log) => storage.set(logKey(d), JSON.stringify(log));
+
+// ─────────────────────────────────────────────────────
+//  ICONS  (inline SVG)
+// ─────────────────────────────────────────────────────
+const Icon = ({ name, size = 18, color = "currentColor", strokeWidth = 2 }) => {
+  const paths = {
+    chevronLeft: <polyline points="15 18 9 12 15 6"/>,
+    chevronRight: <polyline points="9 18 15 12 9 6"/>,
+    chevronDown: <polyline points="6 9 12 15 18 9"/>,
+    check: <polyline points="20 6 9 17 4 12"/>,
+    x: <><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>,
+    edit: <><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></>,
+    trash: <><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></>,
+    plus: <><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>,
+    flame: <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>,
+    activity: <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>,
+    settings: <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></>,
+    bars: <><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></>,
+    home: <><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></>,
+    reset: <><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></>,
+    sparkles: <path d="M12 3l1.9 6.1L20 11l-6.1 1.9L12 19l-1.9-6.1L4 11l6.1-1.9z"/>,
+    save: <><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></>,
+  };
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+      {paths[name]}
+    </svg>
+  );
+};
+
+// ─────────────────────────────────────────────────────
+//  APP ROOT
+// ─────────────────────────────────────────────────────
+function App() {
+  const [view, setView] = useState('today');
+  const [curDate, setCurDate] = useState(() => new Date(new Date().setHours(0,0,0,0)));
+  const [dayLog, setDayLog] = useState(null);
+  const [startDate, setStartDate] = useState('2026-06-08');
+  const [loading, setLoading] = useState(true);
+  const [saveStatus, setSaveStatus] = useState('idle');
+  const [celebrate, setCelebrate] = useState(false);
+  const skipSave = useRef(true);
+  const prevComplete = useRef(false);
+
+  useEffect(() => {
+    (async () => {
+      const settingsRaw = await storage.get('settings');
+      if (settingsRaw) {
+        try { const s = JSON.parse(settingsRaw); if (s.startDate) setStartDate(s.startDate); } catch {}
+      }
+      const stored = await loadLog(curDate);
+      setDayLog(normalizeLog(curDate, stored));
+      setLoading(false);
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    skipSave.current = true;
+    prevComplete.current = false;
+    (async () => {
+      const stored = await loadLog(curDate);
+      setDayLog(normalizeLog(curDate, stored));
+    })();
+  }, [curDate]);
+
+  useEffect(() => {
+    if (!dayLog || loading) return;
+    if (skipSave.current) { skipSave.current = false; return; }
+    setSaveStatus('saving');
+    const t = setTimeout(async () => {
+      const ok = await saveLog(curDate, dayLog);
+      setSaveStatus(ok ? 'saved' : 'idle');
+      if (ok) setTimeout(() => setSaveStatus(s => s === 'saved' ? 'idle' : s), 1800);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [dayLog]);
+
+  useEffect(() => {
+    if (!dayLog) return;
+    const all = Object.values(dayLog.sections).flatMap(s => s.exercises);
+    const done = all.length > 0 && all.every(e => e.done === 'Yes');
+    if (done && !prevComplete.current) {
+      prevComplete.current = true;
+      setCelebrate(true);
+      setTimeout(() => setCelebrate(false), 2500);
+    }
+    if (!done) prevComplete.current = false;
+  }, [dayLog]);
+
+  const patchLog = patch => setDayLog(p => Object.assign({}, p, patch));
+  const patchSec = (sec, patch) => setDayLog(p => {
+    const next = JSON.parse(JSON.stringify(p));
+    next.sections[sec] = Object.assign({}, next.sections[sec], patch);
+    return next;
+  });
+  const patchEx = (sec, id, patch) => setDayLog(p => {
+    const next = JSON.parse(JSON.stringify(p));
+    const idx = next.sections[sec].exercises.findIndex(e => e.id === id);
+    if (idx >= 0) next.sections[sec].exercises[idx] = Object.assign({}, next.sections[sec].exercises[idx], patch);
+    return next;
+  });
+  const addEx = (sec, ex) => setDayLog(p => {
+    const next = JSON.parse(JSON.stringify(p));
+    next.sections[sec].exercises.push(Object.assign({ id: uid(), done: '', weight: '' }, ex));
+    return next;
+  });
+  const deleteEx = (sec, id) => setDayLog(p => {
+    const next = JSON.parse(JSON.stringify(p));
+    next.sections[sec].exercises = next.sections[sec].exercises.filter(e => e.id !== id);
+    return next;
+  });
+
+  if (loading || !dayLog) {
+    return <div style={{minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', color:'#94a3b8'}} className="mono">Loading…</div>;
+  }
+
+  return (
+    <>
+      {saveStatus !== 'idle' && (
+        <div className={'save-pill ' + (saveStatus === 'saving' ? 'save-saving' : 'save-saved')}>
+          {saveStatus === 'saving'
+            ? <><div className="spinner"/>Saving</>
+            : <><Icon name="check" size={12} strokeWidth={3} color="#fff"/>Saved</>
+          }
+        </div>
+      )}
+
+      {celebrate && (
+        <div className="celebrate">
+          <div className="celebrate-card pulse">
+            <Icon name="sparkles" size={22} color="#0f172a"/>
+            Day Complete!
+          </div>
+        </div>
+      )}
+
+      {view === 'today' && <TodayView
+        curDate={curDate} setCurDate={setCurDate} dayLog={dayLog}
+        patchLog={patchLog} patchSec={patchSec} patchEx={patchEx}
+        addEx={addEx} deleteEx={deleteEx} startDate={startDate} />}
+      {view === 'stats' && <StatsView startDate={startDate}/>}
+      {view === 'settings' && <SettingsView startDate={startDate} setStartDate={async d => {
+        setStartDate(d);
+        await storage.set('settings', JSON.stringify({startDate:d}));
+      }}/>}
+
+      <div className="nav">
+        <div className="nav-inner">
+          {[
+            {id:'today', icon:'home', label:'Today'},
+            {id:'stats', icon:'bars', label:'Stats'},
+            {id:'settings', icon:'settings', label:'Settings'},
+          ].map(t => (
+            <button key={t.id} onClick={() => setView(t.id)} className={'nav-btn ' + (view === t.id ? 'active' : '')}>
+              <Icon name={t.icon} size={22} strokeWidth={view === t.id ? 2.5 : 2}/>
+              <span className="nav-btn-label">{t.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────
+//  TODAY VIEW
+// ─────────────────────────────────────────────────────
+function TodayView({ curDate, setCurDate, dayLog, patchLog, patchSec, patchEx, addEx, deleteEx, startDate }) {
+  const today = new Date(new Date().setHours(0,0,0,0));
+  const isToday = sameDay(curDate, today);
+  const wk = weekNum(curDate, startDate);
+  const sched = SCHEDULE[dayName(curDate)];
+
+  const { totalEx, doneEx } = useMemo(() => {
+    let t=0, d=0;
+    Object.values(dayLog.sections).forEach(s => s.exercises.forEach(e => { t++; if (e.done === 'Yes') d++; }));
+    return { totalEx: t, doneEx: d };
+  }, [dayLog]);
+  const pct = totalEx > 0 ? doneEx / totalEx : 0;
+  const circ = 2 * Math.PI * 26;
+
+  return (
+    <div>
+      <div className="px-4 pt-5 pb-2">
+        <div className="row" style={{justifyContent:'space-between'}}>
+          <button onClick={() => setCurDate(addDays(curDate,-1))} style={{padding:8, borderRadius:'50%'}}>
+            <Icon name="chevronLeft" size={26}/>
+          </button>
+          <div className="text-center">
+            <div style={{fontSize:11, fontWeight:800, letterSpacing:'0.22em', textTransform:'uppercase', color: isToday ? '#fbbf24' : '#94a3b8'}}>
+              {isToday ? 'Today' : <span onClick={() => setCurDate(today)} style={{cursor:'pointer'}}>← Today</span>}
+            </div>
+            <div className="h1 mt-1">{fmtNice(curDate)}</div>
+            {wk >= 1 && wk <= 12 &&
+              <div className="meta mono mt-1">Week {wk} of 12</div>
+            }
+          </div>
+          <button onClick={() => setCurDate(addDays(curDate,1))} style={{padding:8, borderRadius:'50%'}}>
+            <Icon name="chevronRight" size={26}/>
+          </button>
+        </div>
+
+        <div className="focus-card mt-4">
+          <div className="ring-wrap">
+            <svg viewBox="0 0 64 64">
+              <circle cx="32" cy="32" r="26" stroke="rgba(255,255,255,0.1)" strokeWidth="6" fill="none"/>
+              <circle cx="32" cy="32" r="26" stroke="#f59e0b" strokeWidth="6" fill="none"
+                strokeDasharray={(pct*circ) + ' ' + circ} strokeLinecap="round"/>
+            </svg>
+            <div className="ring-text">{Math.round(pct*100)}%</div>
+          </div>
+          <div className="grow">
+            <div style={{fontSize:10, fontWeight:800, letterSpacing:'0.16em', textTransform:'uppercase', color:'#fbbf24'}}>Focus</div>
+            <div className="h2 mt-1">{sched.focus}</div>
+            <div className="meta mono mt-1">{doneEx}/{totalEx} exercises</div>
+          </div>
+        </div>
+      </div>
+
+      <DayLog dayLog={dayLog} patchLog={patchLog}/>
+
+      <div className="px-4 mt-3 space-y-3">
+        {sched.sections.map((sec, i) => (
+          <SectionCard key={sec.name}
+            secName={sec.name}
+            log={dayLog.sections[sec.name] || {done:'', exercises:[]}}
+            patchSec={p => patchSec(sec.name, p)}
+            patchEx={(id, p) => patchEx(sec.name, id, p)}
+            addEx={ex => addEx(sec.name, ex)}
+            deleteEx={id => deleteEx(sec.name, id)}
+            defaultOpen={i === 0}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────
+//  DAY LOG
+// ─────────────────────────────────────────────────────
+function DayLog({ dayLog, patchLog }) {
+  const [open, setOpen] = useState(false);
+  const STATUSES = ['Not Started','Done','Modified','Skipped'];
+  const pillClass = s => ({
+    'Not Started':'pill pill-new', 'Done':'pill pill-done', 'Modified':'pill pill-mod', 'Skipped':'pill pill-skip'
+  }[s]);
+
+  return (
+    <div className="px-4 mt-3">
+      <div className="card">
+        <button onClick={() => setOpen(o => !o)}
+          style={{width:'100%', padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
+          <div className="row gap-2">
+            <Icon name="activity" size={16} color="#fbbf24"/>
+            <span style={{fontSize:14, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.05em'}}>Day Log</span>
+          </div>
+          <div className="row gap-2">
+            <span className={pillClass(dayLog.status)}>{dayLog.status}</span>
+            <Icon name="chevronDown" size={16} color="#94a3b8"/>
+          </div>
+        </button>
+
+        {open && (
+          <div style={{borderTop:'1px solid #334155', padding:'16px'}} className="space-y-4">
+            <div>
+              <div className="label">Status</div>
+              <div className="grid-4 mt-2">
+                {STATUSES.map(s => (
+                  <button key={s} onClick={() => patchLog({status:s})}
+                    className={dayLog.status === s ? pillClass(s) : 'pill pill-new'}
+                    style={{padding:'10px 4px', fontSize:11, opacity: dayLog.status === s ? 1 : 0.6, boxShadow: dayLog.status === s ? '0 0 0 2px rgba(255,255,255,0.2)' : 'none'}}>
+                    {s === 'Not Started' ? '—' : s}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="label">Energy <span style={{color:'#94a3b8'}}>1-10</span></div>
+              <NumPad value={dayLog.energy} min={1} max={10} onChange={v => patchLog({energy:v})}
+                colorFn={v => v >= 7 ? '#10b981' : v >= 4 ? '#f59e0b' : '#ef4444'}/>
+            </div>
+
+            {[['painS','Shoulder Pain'],['painB','Back Pain'],['painK','Knee Pain']].map(([k,l]) => (
+              <div key={k}>
+                <div className="label">{l} <span style={{color:'#94a3b8'}}>0-10</span></div>
+                <NumPad value={dayLog[k]} min={0} max={10} onChange={v => patchLog({[k]:v})}
+                  colorFn={v => v <= 2 ? '#10b981' : v <= 5 ? '#f59e0b' : '#ef4444'}/>
+              </div>
+            ))}
+
+            <div>
+              <div className="label">Notes</div>
+              <textarea value={dayLog.notes || ''} onChange={e => patchLog({notes:e.target.value})}
+                placeholder="How did it feel today?" rows={2}
+                className="input mt-2" style={{resize:'none'}}/>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function NumPad({ value, min, max, onChange, colorFn }) {
+  return (
+    <div className="numpad">
+      {Array.from({length: max-min+1}, (_, i) => {
+        const v = min + i;
+        const sel = value === v;
+        const col = sel && colorFn ? colorFn(v) : null;
+        const style = sel && col ? { background: col, color: col === '#f59e0b' ? '#0f172a' : '#fff' } : {};
+        return (
+          <button key={v} onClick={() => onChange(sel ? null : v)}
+            className={'num-btn' + (sel ? ' selected' : '')}
+            style={style}>{v}</button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────
+//  SECTION CARD
+// ─────────────────────────────────────────────────────
+function SectionCard({ secName, log, patchSec, patchEx, addEx, deleteEx, defaultOpen }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const [adding, setAdding] = useState(false);
+  const color = SEC_COLOR[secName] || '#94a3b8';
+
+  const total = log.exercises.length;
+  const done = log.exercises.filter(e => e.done === 'Yes').length;
+  const allDone = total > 0 && done === total;
+
+  const bgColor = color + '22'; // ~13% opacity hex
+
+  return (
+    <div className="sec-card" style={{borderColor: allDone ? color : '#334155', background: bgColor}}>
+      <button onClick={() => setOpen(o => !o)} className="sec-header">
+        <div className="sec-bar" style={{background: color}}/>
+        <div className="grow">
+          <div className="sec-title" style={{color}}>{secName}</div>
+          <div className="sec-meta">{done}/{total} done</div>
+        </div>
+        {allDone && <Icon name="check" size={18} strokeWidth={3} color={color}/>}
+        <Icon name="chevronDown" size={18} color="#cbd5e1"/>
+      </button>
+
+      {open && (
+        <div className="sec-body">
+          {log.exercises.map(ex => (
+            <ExRow key={ex.id} ex={ex}
+              update={p => patchEx(ex.id, p)}
+              remove={() => deleteEx(ex.id)}
+              tintColor={color}/>
+          ))}
+
+          {adding
+            ? <AddForm tintColor={color} onSave={ex => { addEx(ex); setAdding(false); }} onCancel={() => setAdding(false)}/>
+            : <button onClick={() => setAdding(true)}
+                style={{width:'100%', padding:'12px', display:'flex', alignItems:'center', justifyContent:'center', gap:6, fontSize:13, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.05em', color, borderTop:'1px solid rgba(255,255,255,0.08)'}}>
+                <Icon name="plus" size={16} strokeWidth={3}/>Add Exercise
+              </button>
+          }
+
+          <div style={{padding:'10px 16px', borderTop:'1px solid rgba(255,255,255,0.08)', background:'rgba(0,0,0,0.2)', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
+            <span style={{fontSize:11, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.12em', color:'#cbd5e1'}}>Section Done</span>
+            <DoneBtn value={log.done} onChange={v => patchSec({done:v})} compact/>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────
+//  EXERCISE ROW
+// ─────────────────────────────────────────────────────
+function ExRow({ ex, update, remove, tintColor }) {
+  const [editing, setEditing] = useState(false);
+  const isDone = ex.done === 'Yes';
+
+  if (editing) {
+    return <EditForm ex={ex} tintColor={tintColor}
+      onSave={p => { update(p); setEditing(false); }}
+      onCancel={() => setEditing(false)}
+      onDelete={() => { remove(); setEditing(false); }}/>;
+  }
+
+  return (
+    <div className={'ex-row' + (isDone ? ' done' : '')}>
+      <div className="row" style={{alignItems:'flex-start'}}>
+        <div className="grow">
+          <div className={'ex-name' + (isDone ? ' done' : '')}>{ex.ex}</div>
+          <div className="ex-meta">{ex.sets} × {ex.reps}</div>
+        </div>
+        <button onClick={() => setEditing(true)} className="edit-btn">
+          <Icon name="edit" size={15}/>
+        </button>
+      </div>
+      <div className="row mt-2">
+        <input className="input input-mono grow"
+          inputMode="decimal" value={ex.weight || ''}
+          onChange={e => update({weight:e.target.value})}
+          placeholder="Weight / load"/>
+        <DoneBtn value={ex.done} onChange={v => update({done:v})}/>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────
+//  EDIT FORM
+// ─────────────────────────────────────────────────────
+function EditForm({ ex, tintColor, onSave, onCancel, onDelete }) {
+  const [name, setName] = useState(ex.ex);
+  const [sets, setSets] = useState(String(ex.sets));
+  const [reps, setReps] = useState(ex.reps);
+  const [confirmDel, setConfirmDel] = useState(false);
+
+  return (
+    <div style={{padding:'16px', borderBottom:'1px solid rgba(255,255,255,0.06)', background:'rgba(2,6,23,0.5)'}} className="space-y-3">
+      <div style={{fontSize:11, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.12em', color:tintColor}}>Edit Exercise</div>
+      <input className="input" value={name} onChange={e => setName(e.target.value)} placeholder="Exercise name"/>
+      <div className="grid-2">
+        <input className="input input-mono" type="number" inputMode="numeric" value={sets} onChange={e => setSets(e.target.value)} placeholder="Sets"/>
+        <input className="input input-mono" value={reps} onChange={e => setReps(e.target.value)} placeholder="Reps / duration"/>
+      </div>
+
+      {confirmDel ? (
+        <div style={{padding:'12px', background:'rgba(190,18,60,0.2)', border:'1px solid #be123c', borderRadius:'12px'}} className="space-y-2">
+          <div style={{fontSize:13, color:'#fecdd3', fontWeight:600}}>Delete this exercise?</div>
+          <div className="grid-2">
+            <button className="btn btn-slate" onClick={() => setConfirmDel(false)}>Cancel</button>
+            <button className="btn btn-rose" onClick={onDelete}>Delete</button>
+          </div>
+        </div>
+      ) : (
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8}}>
+          <button className="btn" style={{background:'rgba(190,18,60,0.3)', color:'#fecaca'}} onClick={() => setConfirmDel(true)}>
+            <Icon name="trash" size={13}/>Delete
+          </button>
+          <button className="btn btn-slate" onClick={onCancel}>Cancel</button>
+          <button className="btn" style={{background:tintColor, color:'#0f172a'}}
+            onClick={() => onSave({ex: name.trim()||ex.ex, sets: parseInt(sets)||ex.sets, reps: reps.trim()||ex.reps})}>
+            <Icon name="save" size={13} color="#0f172a" strokeWidth={3}/>Save
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────
+//  ADD FORM
+// ─────────────────────────────────────────────────────
+function AddForm({ tintColor, onSave, onCancel }) {
+  const [name, setName] = useState('');
+  const [sets, setSets] = useState('3');
+  const [reps, setReps] = useState('');
+  const valid = name.trim().length > 0;
+
+  return (
+    <div style={{padding:'16px', borderTop:'1px solid rgba(255,255,255,0.08)', background:'rgba(2,6,23,0.5)'}} className="space-y-3">
+      <div style={{fontSize:11, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.12em', color:tintColor}}>New Exercise</div>
+      <input className="input" autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="Exercise name *"/>
+      <div className="grid-2">
+        <input className="input input-mono" type="number" inputMode="numeric" value={sets} onChange={e => setSets(e.target.value)} placeholder="Sets"/>
+        <input className="input input-mono" value={reps} onChange={e => setReps(e.target.value)} placeholder="Reps / duration"/>
+      </div>
+      <div className="grid-2">
+        <button className="btn btn-slate" onClick={onCancel}>Cancel</button>
+        <button className="btn" disabled={!valid}
+          style={{background:tintColor, color:'#0f172a', opacity: valid ? 1 : 0.3}}
+          onClick={() => valid && onSave({ex:name.trim(), sets:parseInt(sets)||3, reps:reps.trim()||'—'})}>
+          <Icon name="plus" size={15} color="#0f172a" strokeWidth={3}/>Add
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────
+//  DONE BUTTON
+// ─────────────────────────────────────────────────────
+function DoneBtn({ value, onChange, compact }) {
+  const cycle = {'':'Yes','Yes':'Modified','Modified':'No','No':''};
+  const v = value || '';
+  const cfg = {
+    '':         {cls:'done-mark', label:'Mark',  icon:null},
+    'Yes':      {cls:'done-yes',  label:'Done', icon:'check'},
+    'Modified': {cls:'done-mod',  label:'Mod',  icon:'edit'},
+    'No':       {cls:'done-no',   label:'Skip', icon:'x'},
+  }[v];
+
+  return (
+    <button onClick={() => onChange(cycle[v])}
+      className={cfg.cls}
+      style={{padding: compact ? '6px 12px' : '8px 14px', borderRadius:12, fontWeight:800, fontSize: compact ? 10 : 12, textTransform:'uppercase', letterSpacing:'0.06em', minWidth: compact ? 64 : 72, display:'flex', alignItems:'center', justifyContent:'center', gap:5}}>
+      {cfg.icon && <Icon name={cfg.icon} size={13} strokeWidth={3} color={cfg.cls === 'done-mod' ? '#0f172a' : '#fff'}/>}
+      {cfg.label}
+    </button>
+  );
+}
+
+// ─────────────────────────────────────────────────────
+//  STATS VIEW
+// ─────────────────────────────────────────────────────
+function StatsView({ startDate }) {
+  const [logs, setLogs] = useState({});
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const keys = await storage.list('log:');
+      const result = {};
+      for (const k of keys) {
+        const v = await storage.get(k);
+        if (v) { try { result[k.replace('log:','')] = JSON.parse(v); } catch {} }
+      }
+      setLogs(result);
+      setReady(true);
+    })();
+  }, []);
+
+  const stats = useMemo(() => {
+    let daysDone=0, daysSkipped=0, daysMod=0;
+    let exDone=0, exTotal=0;
+    let energySum=0, energyN=0;
+    let pains={S:0,B:0,K:0}, painN=0;
+    const perWeek = {};
+
+    Object.entries(logs).forEach(([ds, log]) => {
+      const wk = weekNum(parseYMD(ds), startDate);
+      if (wk < 1 || wk > 12) return;
+      if (!perWeek[wk]) perWeek[wk] = {done:0, skip:0};
+      if (log.status === 'Done') { daysDone++; perWeek[wk].done++; }
+      if (log.status === 'Skipped') { daysSkipped++; perWeek[wk].skip++; }
+      if (log.status === 'Modified') daysMod++;
+      if (log.energy != null) { energySum += log.energy; energyN++; }
+      if (log.painS != null || log.painB != null || log.painK != null) {
+        pains.S += log.painS || 0; pains.B += log.painB || 0; pains.K += log.painK || 0; painN++;
+      }
+      Object.values(log.sections || {}).forEach(sec => {
+        (Array.isArray(sec.exercises) ? sec.exercises : Object.values(sec.exercises || {})).forEach(ex => {
+          exTotal++; if (ex.done === 'Yes') exDone++;
+        });
+      });
+    });
+
+    let streak = 0, cur = new Date(new Date().setHours(0,0,0,0));
+    for (let i = 0; i < 90; i++) {
+      const l = logs[ymd(cur)];
+      if (l && (l.status === 'Done' || l.status === 'Modified')) streak++;
+      else if (i > 0) break;
+      cur = addDays(cur, -1);
+    }
+
+    return { daysDone, daysSkipped, daysMod, exDone, exTotal,
+      avgEnergy: energyN ? energySum/energyN : null,
+      avgS: painN ? pains.S/painN : null,
+      avgB: painN ? pains.B/painN : null,
+      avgK: painN ? pains.K/painN : null,
+      perWeek, streak };
+  }, [logs, startDate]);
+
+  if (!ready) return <div className="px-4 pt-5 text-center meta mono">Loading…</div>;
+
+  return (
+    <div className="px-4 pt-5 space-y-4">
+      <div>
+        <div className="h1">Stats</div>
+        <div className="meta mono" style={{textTransform:'uppercase', letterSpacing:'0.15em', marginTop:4}}>12-Week Overview</div>
+      </div>
+
+      <div className="card card-pad" style={{borderColor:'rgba(245,158,11,0.4)', display:'flex', alignItems:'center', gap:16}}>
+        <div style={{width:56, height:56, borderRadius:16, background:'rgba(245,158,11,0.2)', display:'flex', alignItems:'center', justifyContent:'center'}}>
+          <Icon name="flame" size={28} color="#fbbf24"/>
+        </div>
+        <div>
+          <div className="mono" style={{fontSize:32, fontWeight:800, color:'#fff', lineHeight:1}}>{stats.streak}</div>
+          <div style={{fontSize:13, color:'#cbd5e1', fontWeight:600, marginTop:4}}>Day streak</div>
+        </div>
+      </div>
+
+      <div className="grid-2">
+        {[
+          {label:'Days Done', val:stats.daysDone, of:84, color:'#10b981'},
+          {label:'Days Skipped', val:stats.daysSkipped, of:84, color:'#ef4444'},
+          {label:'Exercises Done', val:stats.exDone, of:stats.exTotal || '—', color:'#fbbf24'},
+          {label:'Days Modified', val:stats.daysMod, of:84, color:'#3b82f6'},
+        ].map(s => (
+          <div key={s.label} className="card card-pad">
+            <div className="label">{s.label}</div>
+            <div style={{marginTop:6, display:'flex', alignItems:'baseline', gap:4}}>
+              <span className="mono" style={{fontSize:28, fontWeight:800, color:s.color}}>{s.val}</span>
+              <span className="meta mono">/ {s.of}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="card card-pad">
+        <div className="label mb-3">Wellness Averages</div>
+        {[
+          {label:'Energy', val:stats.avgEnergy, color:'#10b981'},
+          {label:'Shoulder Pain', val:stats.avgS, color:'#ef4444'},
+          {label:'Back Pain', val:stats.avgB, color:'#ef4444'},
+          {label:'Knee Pain', val:stats.avgK, color:'#ef4444'},
+        ].map(s => (
+          <div key={s.label} className="mb-3">
+            <div className="row" style={{justifyContent:'space-between', marginBottom:6}}>
+              <span className="secondary" style={{fontSize:13, fontWeight:600}}>{s.label}</span>
+              <span className="mono" style={{fontSize:13, fontWeight:700, color:'#fff'}}>{s.val != null ? s.val.toFixed(1) : '—'}<span style={{color:'#64748b'}}> / 10</span></span>
+            </div>
+            <div className="bar"><div className="bar-fill" style={{width:`${s.val ? Math.min(s.val/10,1)*100 : 0}%`, background:s.color}}/></div>
+          </div>
+        ))}
+      </div>
+
+      <div className="card card-pad">
+        <div className="label mb-3">By Week</div>
+        {Array.from({length:12}, (_,i)=>i+1).map(wk => {
+          const w = stats.perWeek[wk] || {done:0, skip:0};
+          const pct = w.done/7;
+          return (
+            <div key={wk} className="row mb-2">
+              <span className="mono" style={{fontSize:12, fontWeight:700, color:'#cbd5e1', width:36}}>Wk {wk}</span>
+              <div className="bar grow"><div className="bar-fill" style={{width:`${pct*100}%`, background:'#fbbf24'}}/></div>
+              <span className="mono" style={{fontSize:12, fontWeight:700, color:'#cbd5e1', width:32, textAlign:'right'}}>{w.done}/7</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────
+//  SETTINGS VIEW
+// ─────────────────────────────────────────────────────
+function SettingsView({ startDate, setStartDate }) {
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const doReset = async () => {
+    const keys = await storage.list('log:');
+    for (const k of keys) await storage.delete(k);
+    setMsg('All data cleared.');
+    setConfirmReset(false);
+    setTimeout(() => setMsg(''), 3000);
+  };
+
+  return (
+    <div className="px-4 pt-5 space-y-4">
+      <div>
+        <div className="h1">Settings</div>
+        <div className="meta mono" style={{textTransform:'uppercase', letterSpacing:'0.15em', marginTop:4}}>Configuration</div>
+      </div>
+
+      <div className="card card-pad">
+        <div className="label mb-3">Plan Start Date</div>
+        <input className="input input-mono" type="date" value={startDate}
+          onChange={e => setStartDate(e.target.value)} style={{colorScheme:'dark'}}/>
+        <p style={{fontSize:12, color:'#94a3b8', marginTop:8}}>Must be a Monday for week numbers to align.</p>
+      </div>
+
+      <div className="card card-pad">
+        <div className="label mb-3">How It Works</div>
+        {[
+          "Every change saves automatically (look for the green Saved pill).",
+          "Tap the pencil icon on any exercise to edit name, sets, or reps.",
+          "Use Add Exercise at the bottom of each section to add custom moves.",
+          "Edits are per-day - Monday week 1 won't affect Monday week 2.",
+          "Done button cycles: Mark → Done → Mod → Skip → back.",
+          "Keep pain under 3/10. Reduce load or swap if pain rises.",
+        ].map((t,i) => (
+          <div key={i} className="row" style={{alignItems:'flex-start', marginBottom:10, gap:10}}>
+            <span style={{color:'#fbbf24', fontWeight:800, flexShrink:0}}>{i+1}.</span>
+            <span className="secondary" style={{fontSize:14}}>{t}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="card card-pad">
+        <div className="label mb-3">Weekly Schedule</div>
+        {Object.entries(SCHEDULE).map(([day, info]) => (
+          <div key={day} className="row mb-2" style={{alignItems:'flex-start', gap:12, borderBottom:'1px solid #334155', paddingBottom:8}}>
+            <span className="mono" style={{fontSize:12, fontWeight:800, color:'#fbbf24', width:36}}>{day.slice(0,3).toUpperCase()}</span>
+            <span className="secondary" style={{fontSize:14, fontWeight:500}}>{info.focus}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="card card-pad" style={{borderColor:'rgba(190,18,60,0.4)'}}>
+        <div className="label mb-3">Danger Zone</div>
+        {!confirmReset ? (
+          <button onClick={() => setConfirmReset(true)} className="btn"
+            style={{width:'100%', background:'rgba(190,18,60,0.3)', color:'#fecaca', padding:'12px'}}>
+            <Icon name="reset" size={15}/>Clear All Log Data
+          </button>
+        ) : (
+          <div className="space-y-3">
+            <p style={{fontSize:13, color:'#fecdd3', fontWeight:600}}>Delete all logged data permanently?</p>
+            <div className="grid-2">
+              <button className="btn btn-slate" onClick={() => setConfirmReset(false)}>Cancel</button>
+              <button className="btn btn-rose" onClick={doReset}>Delete All</button>
+            </div>
+          </div>
+        )}
+        {msg && <p style={{fontSize:13, color:'#10b981', fontWeight:600, marginTop:8}}>{msg}</p>}
+      </div>
+    </div>
+  );
+}
+
+// Mount
+const root = ReactDOM.createRoot(document.getElementById('app'));
+root.render(<App/>);
+</script>
+</body>
+</html>
